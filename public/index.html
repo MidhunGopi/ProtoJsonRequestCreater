@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proto to Postman Request Creator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Proto to Postman Request Creator</h1>
+            <p class="subtitle">Generate Postman requests from proto files with customizable dummy data</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>Step 1: Upload Proto File</h2>
+                <div class="upload-section">
+                    <input type="file" id="protoFile" accept=".proto" />
+                    <button id="inspectBtn" class="btn btn-secondary">Inspect File</button>
+                </div>
+                <div id="inspectResult" class="result-section"></div>
+            </div>
+
+            <div class="card">
+                <h2>Step 2: Select Service and Method</h2>
+                <div class="form-group">
+                    <label for="serviceName">Service Name (optional):</label>
+                    <input type="text" id="serviceName" placeholder="Leave empty to auto-detect" />
+                </div>
+                <div class="form-group">
+                    <label for="methodName">Method Name:</label>
+                    <input type="text" id="methodName" placeholder="e.g., CreateUser" required />
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Step 3: Custom Field Rules (Optional)</h2>
+                <p class="help-text">
+                    Define custom rules for specific fields. Example: Set "customerId" to generate as GUID instead of string.
+                </p>
+                <div id="rulesContainer">
+                    <div class="rule-row">
+                        <input type="text" class="rule-field" placeholder="Field name (e.g., customerId)" />
+                        <select class="rule-type">
+                            <option value="string">String</option>
+                            <option value="int">Integer</option>
+                            <option value="guid">GUID</option>
+                        </select>
+                        <input type="text" class="rule-value" placeholder="Custom value (optional)" />
+                        <button class="btn-remove" onclick="removeRule(this)">×</button>
+                    </div>
+                </div>
+                <button id="addRuleBtn" class="btn btn-secondary">+ Add Rule</button>
+            </div>
+
+            <div class="action-section">
+                <button id="generateBtn" class="btn btn-primary">Generate Postman Request</button>
+            </div>
+
+            <div id="result" class="card result-card" style="display: none;">
+                <h2>Generated Postman Collection</h2>
+                <div class="result-info">
+                    <p><strong>Service:</strong> <span id="resultService"></span></p>
+                    <p><strong>Method:</strong> <span id="resultMethod"></span></p>
+                </div>
+                <div class="result-tabs">
+                    <button class="tab-btn active" data-tab="postman">Postman Collection</button>
+                    <button class="tab-btn" data-tab="body">Request Body</button>
+                </div>
+                <div id="postmanTab" class="tab-content active">
+                    <pre id="postmanOutput"></pre>
+                </div>
+                <div id="bodyTab" class="tab-content">
+                    <pre id="bodyOutput"></pre>
+                </div>
+                <div class="action-buttons">
+                    <button id="copyPostmanBtn" class="btn btn-secondary">Copy Postman Collection</button>
+                    <button id="downloadBtn" class="btn btn-secondary">Download Collection</button>
+                </div>
+            </div>
+
+            <div id="error" class="error-message" style="display: none;"></div>
+        </main>
+
+        <footer>
+            <p>Upload a .proto file, specify the method, and optionally customize field data generation rules.</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
