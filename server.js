@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -6,6 +7,15 @@ const protobuf = require('protobufjs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Rate limiting for API endpoints
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Middleware
 app.use(express.json());
@@ -134,7 +144,7 @@ function generateDummyJson(messageType, customRules = {}, root = null) {
 }
 
 // Parse proto file and generate Postman request
-app.post('/api/generate', upload.single('protoFile'), async (req, res) => {
+app.post('/api/generate', apiLimiter, upload.single('protoFile'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No proto file uploaded' });
@@ -146,18 +156,34 @@ app.post('/api/generate', upload.single('protoFile'), async (req, res) => {
       return res.status(400).json({ error: 'Method name is required' });
     }
 
-    // Parse custom rules if provided
+    // Parse custom rules if provided with validation
     let parsedRules = {};
     if (customRules) {
       try {
+        // Limit size to prevent DoS
+        if (customRules.length > 10000) {
+          return res.status(400).json({ error: 'Custom rules too large' });
+        }
         parsedRules = JSON.parse(customRules);
+        
+        // Validate that it's an object
+        if (typeof parsedRules !== 'object' || parsedRules === null || Array.isArray(parsedRules)) {
+          return res.status(400).json({ error: 'Custom rules must be a JSON object' });
+        }
       } catch (e) {
-        console.warn('Failed to parse custom rules:', e);
+        return res.status(400).json({ error: 'Invalid JSON in custom rules: ' + e.message });
       }
     }
 
+    // Validate file path to prevent path traversal
+    const filePath = path.resolve(req.file.path);
+    const uploadsDir = path.resolve('uploads');
+    if (!filePath.startsWith(uploadsDir)) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
     // Read and parse the proto file
-    const protoContent = fs.readFileSync(req.file.path, 'utf8');
+    const protoContent = fs.readFileSync(filePath, 'utf8');
     const root = protobuf.parse(protoContent).root;
 
     // Find the service and method
@@ -211,7 +237,7 @@ app.post('/api/generate', upload.single('protoFile'), async (req, res) => {
       findAllServices(root);
       
       // Clean up uploaded file
-      fs.unlinkSync(req.file.path);
+      fs.unlinkSync(filePath);
       return res.status(404).json({ 
         error: 'Method not found',
         availableServices: allServices
@@ -258,7 +284,7 @@ app.post('/api/generate', upload.single('protoFile'), async (req, res) => {
     };
 
     // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(filePath);
 
     res.json({
       postmanCollection: postmanRequest,
@@ -271,8 +297,12 @@ app.post('/api/generate', upload.single('protoFile'), async (req, res) => {
     console.error('Error processing proto file:', error);
     
     // Clean up uploaded file if it exists
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (req.file) {
+      const cleanupPath = path.resolve(req.file.path);
+      const uploadsDir = path.resolve('uploads');
+      if (cleanupPath.startsWith(uploadsDir) && fs.existsSync(cleanupPath)) {
+        fs.unlinkSync(cleanupPath);
+      }
     }
     
     res.status(500).json({ 
@@ -283,13 +313,20 @@ app.post('/api/generate', upload.single('protoFile'), async (req, res) => {
 });
 
 // Get available services and methods from proto file
-app.post('/api/inspect', upload.single('protoFile'), async (req, res) => {
+app.post('/api/inspect', apiLimiter, upload.single('protoFile'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No proto file uploaded' });
     }
 
-    const protoContent = fs.readFileSync(req.file.path, 'utf8');
+    // Validate file path to prevent path traversal
+    const filePath = path.resolve(req.file.path);
+    const uploadsDir = path.resolve('uploads');
+    if (!filePath.startsWith(uploadsDir)) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
+    const protoContent = fs.readFileSync(filePath, 'utf8');
     const root = protobuf.parse(protoContent).root;
 
     const services = [];
@@ -319,15 +356,19 @@ app.post('/api/inspect', upload.single('protoFile'), async (req, res) => {
     findServices(root);
 
     // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(filePath);
 
     res.json({ services });
 
   } catch (error) {
     console.error('Error inspecting proto file:', error);
     
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (req.file) {
+      const cleanupPath = path.resolve(req.file.path);
+      const uploadsDir = path.resolve('uploads');
+      if (cleanupPath.startsWith(uploadsDir) && fs.existsSync(cleanupPath)) {
+        fs.unlinkSync(cleanupPath);
+      }
     }
     
     res.status(500).json({ 
